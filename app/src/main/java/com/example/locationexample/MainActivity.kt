@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -36,32 +37,37 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             LocationExampleTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Column(modifier = Modifier.padding(innerPadding)) {
-                        var message by remember { mutableStateOf("") }
-                        Text("Location")
-                        if (message.isNotEmpty()) {
-                            Text(message)
-                            Log.d("MY LOCATION", message)
-                        }
-                        RequestLocationPermission(
-                            onPermissionDenied = { message = "Location permission denied" },
-                            onPermissionGranted = {
-                                getLastUserLocation(
-                                    onGetLastLocationSuccess = { location ->
-                                        message =
-                                            "Latitude: ${location.first}, Longitude: ${location.second}"
-                                    },
-                                    onGetLastLocationFailed = { exception ->
-                                        message = "Error getting location: ${exception.message}"
-                                    }
-                                )
-                            },
-                            onPermissionsRevoked = { message = "Location permission revoked" }
-                        )
-                    }
+                Scaffold(modifier = Modifier.fillMaxSize()) { scaffoldPadding ->
+                    MainComposable(scaffoldPadding)
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun MainComposable(scaffoldPadding: PaddingValues) {
+        Column(modifier = Modifier.padding(scaffoldPadding)) {
+            var locationInfo by remember { mutableStateOf("") }
+            Text("Location")
+            if (locationInfo.isNotEmpty()) {
+                Text(locationInfo)
+                Log.d("MY LOCATION", locationInfo)
+            }
+            RequestLocationPermission(
+                onPermissionDenied = { locationInfo = "Location permission denied" },
+                onPermissionGranted = {
+                    getLastUserLocation(
+                        onLocationRetrieved = { location ->
+                            locationInfo =
+                                "Latitude: ${location.first}, Longitude: ${location.second}"
+                        },
+                        onLocationRetrievalFailed = { retrievalException ->
+                            locationInfo = "Error getting location: ${retrievalException.message}"
+                        }
+                    )
+                },
+                onPermissionsRevoked = { locationInfo = "Location permission revoked" }
+            )
         }
     }
 
@@ -70,15 +76,15 @@ class MainActivity : ComponentActivity() {
     /**
      * Retrieves the last known user location asynchronously.
      *
-     * @param onGetLastLocationSuccess Callback function invoked when the location is successfully retrieved.
+     * @param onLocationRetrieved Callback function invoked when the location is successfully retrieved.
      *        It provides a Pair representing latitude and longitude.
-     * @param onGetLastLocationFailed Callback function invoked when an error occurs while retrieving the location.
+     * @param onLocationRetrievalFailed Callback function invoked when an error occurs while retrieving the location.
      *        It provides the Exception that occurred.
      */
     @SuppressLint("MissingPermission")
     private fun getLastUserLocation(
-        onGetLastLocationSuccess: (Pair<Double, Double>) -> Unit,
-        onGetLastLocationFailed: (Exception) -> Unit
+        onLocationRetrieved: (Pair<Double, Double>) -> Unit,
+        onLocationRetrievalFailed: (Exception) -> Unit
     ) {
         // Check if location permissions are granted
         //if (areLocationPermissionsGranted()) {
@@ -87,12 +93,12 @@ class MainActivity : ComponentActivity() {
             .addOnSuccessListener { location ->
                 location?.let {
                     // If location is not null, invoke the success callback with latitude and longitude
-                    onGetLastLocationSuccess(Pair(it.latitude, it.longitude))
+                    onLocationRetrieved(Pair(it.latitude, it.longitude))
                 }
             }
-            .addOnFailureListener { exception ->
+            .addOnFailureListener { retrievalException ->
                 // If an error occurs, invoke the failure callback with the exception
-                onGetLastLocationFailed(exception)
+                onLocationRetrievalFailed(retrievalException)
             }
         //}
     }
@@ -113,7 +119,7 @@ fun RequestLocationPermission(
     onPermissionsRevoked: () -> Unit
 ) {
     // Initialize the state for managing multiple location permissions.
-    val permissionState = rememberMultiplePermissionsState(
+    val locationPermissionState = rememberMultiplePermissionsState(
         listOf(
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -121,24 +127,24 @@ fun RequestLocationPermission(
     )
 
     // Use LaunchedEffect to handle permissions logic when the composition is launched.
-    LaunchedEffect(key1 = permissionState) {
+    LaunchedEffect(key1 = locationPermissionState) {
         // Filter permissions that need to be requested.
-        val permissionsToRequest = permissionState.permissions.filter {
+        val pendingPermissions = locationPermissionState.permissions.filter {
             !it.status.isGranted
         }
 
         // If there are permissions to request, launch the permission request.
-        if (permissionsToRequest.isNotEmpty()) permissionState.launchMultiplePermissionRequest()
+        if (pendingPermissions.isNotEmpty()) locationPermissionState.launchMultiplePermissionRequest()
 
         // Check if all previously granted permissions are revoked.
-        val allPermissionsRevoked =
-            permissionState.permissions.size == permissionState.revokedPermissions.size
+        val allLocationPermissionsRevoked =
+            locationPermissionState.permissions.size == locationPermissionState.revokedPermissions.size
 
         // Execute callbacks based on permission status.
-        if (allPermissionsRevoked) {
+        if (allLocationPermissionsRevoked) {
             onPermissionsRevoked()
         } else {
-            if (permissionState.allPermissionsGranted) {
+            if (locationPermissionState.allPermissionsGranted) {
                 onPermissionGranted()
             } else {
                 onPermissionDenied()
